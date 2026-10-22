@@ -47,3 +47,20 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Next.js
+.next/
+out/
+
+# Environment variables
+.env
+.env*.local
+
+# Database & SQLite
+*.sqlite
+*.sqlite3
+*.db
+knowdex.sqlite
+
+# Bun
+bun.lockb
