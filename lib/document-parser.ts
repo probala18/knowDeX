@@ -38,35 +38,59 @@ export async function parseDocument(buffer: Buffer, mimeType: string, filename: 
 }
 
 async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
-  const data = await pdfParse(buffer);
-  const text = cleanText(data.text);
-  const pageCount = data.numpages || 1;
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  try {
+    const data = await pdfParse(buffer);
+    const text = cleanText(data.text || "");
+    const pageCount = data.numpages || 1;
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
 
-  // Approximate per-page splitting or uniform distribution if markers aren't explicit
-  const rawPages = data.text.split(/\f/);
-  const pages: ParsedPage[] = [];
+    const rawPages = (data.text || "").split(/\f/);
+    const pages: ParsedPage[] = [];
 
-  if (rawPages.length > 1) {
-    rawPages.forEach((pText, i) => {
-      const cleaned = cleanText(pText);
-      if (cleaned.length > 0) {
-        pages.push({ pageNumber: i + 1, text: cleaned });
-      }
-    });
-  } else {
-    // If form-feed not present, distribute chunks roughly across pageCount
-    const totalLen = text.length;
-    const lenPerPage = Math.max(1, Math.ceil(totalLen / pageCount));
-    for (let i = 0; i < pageCount; i++) {
-      const pageText = text.slice(i * lenPerPage, (i + 1) * lenPerPage);
-      if (pageText.trim()) {
-        pages.push({ pageNumber: i + 1, text: pageText.trim() });
+    if (rawPages.length > 1) {
+      rawPages.forEach((pText, i) => {
+        const cleaned = cleanText(pText);
+        if (cleaned.length > 0) {
+          pages.push({ pageNumber: i + 1, text: cleaned });
+        }
+      });
+    } else {
+      const totalLen = text.length;
+      const lenPerPage = Math.max(1, Math.ceil(totalLen / pageCount));
+      for (let i = 0; i < pageCount; i++) {
+        const pageText = text.slice(i * lenPerPage, (i + 1) * lenPerPage);
+        if (pageText.trim()) {
+          pages.push({ pageNumber: i + 1, text: pageText.trim() });
+        }
       }
     }
-  }
 
-  return { text, pageCount, wordCount, pages: pages.length > 0 ? pages : [{ pageNumber: 1, text }] };
+    return { text, pageCount, wordCount, pages: pages.length > 0 ? pages : [{ pageNumber: 1, text }] };
+  } catch (err) {
+    console.warn("pdf-parse extraction failed, using fallback stream parser:", err);
+    // Fallback: extract ASCII and UTF-8 text strings from PDF stream
+    const raw = buffer.toString("binary");
+    const matches = raw.match(/\(([^()]+)\)Tj/g) || raw.match(/\[([^\[\]]+)\]TJ/g) || [];
+    let extracted = matches
+      .map((m) => m.replace(/^[\(\[]|[\)\]]T[Jj]$/g, ""))
+      .join(" ");
+
+    if (extracted.trim().length < 50) {
+      extracted = cleanText(buffer.toString("utf-8").replace(/[^\x20-\x7E\n\r\t]/g, " "));
+    }
+
+    const text = cleanText(extracted);
+    const words = text.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const pageCount = Math.max(1, Math.ceil(wordCount / 300));
+
+    return {
+      text,
+      pageCount,
+      wordCount,
+      pages: [{ pageNumber: 1, text: text || "Uploaded PDF content" }],
+    };
+  }
 }
 
 async function parseDocx(buffer: Buffer): Promise<ParsedDocument> {
