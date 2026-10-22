@@ -170,7 +170,7 @@ export default function ChatDetailPage() {
             RRF k=60
           </span>
           <span className="text-[11px] px-2.5 py-1 rounded-lg bg-secondary/80 border border-border text-muted-foreground font-mono">
-            LangChain ChatMistralAI
+            OpenRouter Free Models
           </span>
         </div>
       </div>

@@ -1,7 +1,7 @@
-import { ChatMistralAI } from "@langchain/mistralai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { hybridRetrieve, RetrievedChunk } from "./hybrid-retriever";
+import { getLLM } from "@/lib/llm";
 
 export interface ChatHistoryExchange {
   role: "user" | "assistant";
@@ -72,11 +72,10 @@ export async function generateRagAnswer(
     ],
   ]);
 
-  const apiKey = process.env.MISTRAL_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.MISTRAL_API_KEY;
   if (!apiKey) {
-    // Graceful fallback if API key is not configured
     return {
-      answer: `Context found from document (Hybrid Retrieval): \n\n${chunks[0].content}\n\n*(Note: Please set MISTRAL_API_KEY in your .env file to enable full generative AI answers).*`,
+      answer: `Context found from document (Hybrid Retrieval): \n\n${chunks[0].content}\n\n*(Note: Please set OPENROUTER_API_KEY in your .env file to enable full generative AI answers with OpenRouter free models).*`,
       sources: chunks.map((c) => ({
         content: c.content.slice(0, 300) + (c.content.length > 300 ? "..." : ""),
         pageNumber: c.pageNumber,
@@ -88,13 +87,8 @@ export async function generateRagAnswer(
     };
   }
 
-  // 5. Initialize LangChain ChatMistralAI model
-  const model = new ChatMistralAI({
-    model: process.env.MISTRAL_MODEL || "mistral-large-latest",
-    apiKey: apiKey,
-    temperature: 0.2,
-    maxTokens: 2048,
-  });
+  // 5. Initialize OpenRouter LangChain Chat model
+  const model = getLLM({ temperature: 0.2 });
 
   // 6. Chain execution with StringOutputParser
   const chain = promptTemplate.pipe(model).pipe(new StringOutputParser());

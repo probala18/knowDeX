@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ChatMistralAI } from "@langchain/mistralai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
+import { getLLM } from "@/lib/llm";
 import crypto from "crypto";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,16 +34,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const text = chunks.map((c) => c.content).join("\n\n").slice(0, 6000);
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY || process.env.MISTRAL_API_KEY;
 
     let items: { concept: string; definition: string; importance: string }[] = [];
 
     if (apiKey) {
-      const model = new ChatMistralAI({
-        model: process.env.MISTRAL_MODEL || "mistral-large-latest",
-        apiKey,
-        temperature: 0.1,
-      });
+      const model = getLLM({ temperature: 0.1 });
 
       const prompt = ChatPromptTemplate.fromMessages([
         [

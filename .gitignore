@@ -61,6 +61,7 @@ out/
 *.sqlite3
 *.db
 knowdex.sqlite
+knowdex_store.json
 
 # Bun
 bun.lockb

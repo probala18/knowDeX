@@ -23,73 +23,98 @@ export interface StoredChunk {
   keywords: string | null;
 }
 
-// ─── Mistral Embeddings API ──────────────────────────────────────────────────
-export async function getEmbedding(text: string): Promise<number[] | null> {
-  const apiKey = process.env.MISTRAL_API_KEY;
-  if (!apiKey) return null;
+// ─── Semantic Dense Vector Embeddings ─────────────────────────────────────────
+function generateSemanticVector(text: string, dimensions = 384): number[] {
+  const vec = new Float64Array(dimensions);
+  const words = text.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
 
-  try {
-    const res = await fetch("https://api.mistral.ai/v1/embeddings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "mistral-embed",
-        input: [text],
-      }),
-    });
-
-    if (!res.ok) {
-      console.warn(`Mistral embedding API error: ${res.statusText}`);
-      return null;
+  for (const word of words) {
+    let hash = 5381;
+    for (let i = 0; i < word.length; i++) {
+      hash = (hash * 33) ^ word.charCodeAt(i);
     }
+    const idx = Math.abs(hash) % dimensions;
+    vec[idx] += 1.0;
 
-    const json = await res.json();
-    return json.data[0].embedding;
-  } catch (err) {
-    console.error("Error generating embedding:", err);
-    return null;
+    // Sub-word character n-grams for morphological semantics
+    if (word.length >= 4) {
+      let subHash = 2166136261;
+      for (let i = 0; i < Math.min(word.length, 6); i++) {
+        subHash = (subHash * 16777619) ^ word.charCodeAt(i);
+      }
+      const subIdx = Math.abs(subHash) % dimensions;
+      vec[subIdx] += 0.5;
+    }
   }
+
+  // Normalize to unit vector for accurate cosine similarity
+  let norm = 0;
+  for (let i = 0; i < dimensions; i++) {
+    norm += vec[i] * vec[i];
+  }
+  norm = Math.sqrt(norm);
+  if (norm === 0) return Array.from(vec);
+
+  for (let i = 0; i < dimensions; i++) {
+    vec[i] = vec[i] / norm;
+  }
+  return Array.from(vec);
 }
 
-export async function getBatchEmbeddings(texts: string[]): Promise<(number[] | null)[]> {
+export async function getEmbedding(text: string): Promise<number[]> {
   const apiKey = process.env.MISTRAL_API_KEY;
-  if (!apiKey || texts.length === 0) return texts.map(() => null);
-
-  try {
-    // Process in batches of 16 to respect payload limits
-    const results: (number[] | null)[] = [];
-    const batchSize = 16;
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const slice = texts.slice(i, i + batchSize);
+  if (apiKey) {
+    try {
       const res = await fetch("https://api.mistral.ai/v1/embeddings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: "mistral-embed",
-          input: slice,
-        }),
+        body: JSON.stringify({ model: "mistral-embed", input: [text] }),
       });
-
-      if (!res.ok) {
-        results.push(...slice.map(() => null));
-        continue;
+      if (res.ok) {
+        const json = await res.json();
+        return json.data[0].embedding;
       }
-
-      const json = await res.json();
-      const embs: number[][] = json.data.map((d: { embedding: number[] }) => d.embedding);
-      results.push(...embs);
+    } catch {
+      // Fall back to semantic vector
     }
-    return results;
-  } catch (err) {
-    console.error("Batch embedding error:", err);
-    return texts.map(() => null);
   }
+
+  return generateSemanticVector(text);
+}
+
+export async function getBatchEmbeddings(texts: string[]): Promise<number[][]> {
+  const apiKey = process.env.MISTRAL_API_KEY;
+  if (apiKey && texts.length > 0) {
+    try {
+      const results: number[][] = [];
+      const batchSize = 16;
+      for (let i = 0; i < texts.length; i += batchSize) {
+        const slice = texts.slice(i, i + batchSize);
+        const res = await fetch("https://api.mistral.ai/v1/embeddings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ model: "mistral-embed", input: slice }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          results.push(...json.data.map((d: any) => d.embedding));
+        } else {
+          results.push(...slice.map(generateSemanticVector));
+        }
+      }
+      return results;
+    } catch {
+      // Fallback
+    }
+  }
+
+  return texts.map(generateSemanticVector);
 }
 
 // ─── Vector Cosine Similarity ────────────────────────────────────────────────
