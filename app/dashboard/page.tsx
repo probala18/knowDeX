@@ -17,19 +17,21 @@ import {
   Clock,
 } from "lucide-react";
 import { DocumentUploader } from "@/components/document-uploader";
+import { getCachedData, setCachedData } from "@/lib/cache";
 
 export default function DashboardPage() {
+  const cached = typeof window !== "undefined" ? getCachedData<any>("/api/dashboard") : null;
   const [data, setData] = useState<{
     stats: { documents: number; chats: number; quizzes: number; flashcardDecks: number };
     recentDocuments: any[];
     recentChats: any[];
-  }>({
+  }>(() => cached || {
     stats: { documents: 0, chats: 0, quizzes: 0, flashcardDecks: 0 },
     recentDocuments: [],
     recentChats: [],
   });
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   const fetchDashboard = async () => {
     try {
@@ -37,6 +39,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
+        setCachedData("/api/dashboard", json);
       }
     } catch (err) {
       console.error(err);

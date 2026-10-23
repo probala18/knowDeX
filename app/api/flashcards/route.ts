@@ -59,47 +59,40 @@ export async function POST(req: Request) {
     let cards: any[] = [];
 
     if (apiKey) {
-      const model = getLLM({ temperature: 0.2 });
+      try {
+        const model = getLLM({ temperature: 0.2 });
 
-      const prompt = ChatPromptTemplate.fromMessages([
-        [
-          "system",
-          `Generate ${count} high quality study flashcards from the text.
+        const prompt = ChatPromptTemplate.fromMessages([
+          [
+            "system",
+            `Generate ${count} high quality study flashcards from the text.
 ${topic ? `Focus specifically on: ${topic}` : ""}
 Return ONLY a valid JSON array of objects with structure:
 [
-  {
+  {{
     "id": "fc1",
     "question": "Front of card: concept or term",
     "answer": "Back of card: clear, concise explanation"
-  }
+  }}
 ]`,
-        ],
-        ["human", `Document Content:\n${text}\n\nJSON array:`],
-      ]);
+          ],
+          ["human", "Document Content:\n{documentText}\n\nJSON array:"],
+        ]);
 
-      const chain = prompt.pipe(model).pipe(new StringOutputParser());
-      const raw = await chain.invoke({});
-      const start = raw.indexOf("[");
-      const end = raw.lastIndexOf("]") + 1;
-      if (start !== -1 && end > start) {
-        cards = JSON.parse(raw.slice(start, end));
+        const chain = prompt.pipe(model).pipe(new StringOutputParser());
+        const raw = await chain.invoke({ documentText: text });
+        const start = raw.indexOf("[");
+        const end = raw.lastIndexOf("]") + 1;
+        if (start !== -1 && end > start) {
+          cards = JSON.parse(raw.slice(start, end));
+        }
+      } catch (err: any) {
+        console.warn("LLM flashcard generation failed, using document-derived fallback:", err?.message || err);
       }
     }
 
     if (cards.length === 0) {
-      cards = [
-        {
-          id: "fc1",
-          question: `Core subject matter of ${doc.name}`,
-          answer: "Explores critical domain concepts, principles, and experimental findings.",
-        },
-        {
-          id: "fc2",
-          question: "Hybrid Retrieval Architecture",
-          answer: "Combines Dense Vector Semantic Search with Sparse BM25 Keyword Search using Reciprocal Rank Fusion.",
-        },
-      ];
+      cards = generateSmartFlashcards(text, doc.name, count);
     }
 
     const deckId = crypto.randomUUID();
@@ -123,4 +116,93 @@ Return ONLY a valid JSON array of objects with structure:
     console.error("Flashcard generation error:", err);
     return NextResponse.json({ error: "Failed to generate flashcards" }, { status: 500 });
   }
+}
+
+function generateSmartFlashcards(text: string, docName: string, maxCount: number): any[] {
+  const cards: any[] = [];
+  const cleanName = docName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+
+  // 1. Split into sentences and find definition-like structures
+  const sentences = text
+    .split(/(?<=[.?!])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 25 && s.length <= 300);
+
+  const definitionRegex = /^([A-Z][A-Za-z0-9\s-]{2,40}?)\s+(?:is(?: a| an| the)?|refers to|denotes|consists of|defined as)\s+(.+)$/i;
+  const colonRegex = /^([A-Z][A-Za-z0-9\s-]{2,40}):\s*(.+)$/;
+
+  for (const s of sentences) {
+    if (cards.length >= maxCount) break;
+
+    const defMatch = s.match(definitionRegex);
+    if (defMatch) {
+      const term = defMatch[1].trim();
+      const rest = defMatch[2].trim();
+      cards.push({
+        id: `fc_${cards.length + 1}`,
+        question: `What is ${term}?`,
+        answer: `${term} is ${rest.endsWith(".") ? rest : rest + "."}`,
+      });
+      continue;
+    }
+
+    const colMatch = s.match(colonRegex);
+    if (colMatch) {
+      const term = colMatch[1].trim();
+      const rest = colMatch[2].trim();
+      cards.push({
+        id: `fc_${cards.length + 1}`,
+        question: `Define: ${term}`,
+        answer: rest.endsWith(".") ? rest : rest + ".",
+      });
+    }
+  }
+
+  // 2. If needed, create cards from other key sentences
+  for (let i = 0; i < sentences.length && cards.length < maxCount; i++) {
+    const s = sentences[i];
+    if (cards.some((c) => c.answer.includes(s.slice(0, 30)))) continue;
+
+    // Look for sentences that contain meaningful statements
+    if (s.includes("because") || s.includes("due to") || s.includes("therefore") || s.includes("results in") || s.includes("provides")) {
+      cards.push({
+        id: `fc_${cards.length + 1}`,
+        question: `Explain the significance:\n"${s.slice(0, 100)}..."`,
+        answer: s,
+      });
+    }
+  }
+
+  // 3. Fallback filler cards based on document name & paragraphs
+  if (cards.length === 0 && sentences.length > 0) {
+    cards.push({
+      id: "fc_1",
+      question: `Core concept in ${cleanName}`,
+      answer: sentences[0],
+    });
+    if (sentences.length > 1) {
+      cards.push({
+        id: "fc_2",
+        question: `Key takeaway from ${cleanName}`,
+        answer: sentences[1],
+      });
+    }
+  }
+
+  if (cards.length === 0) {
+    cards.push(
+      {
+        id: "fc_1",
+        question: `Primary subject of ${cleanName}`,
+        answer: `Covers essential academic foundations, methodology, and core principles outlined in ${docName}.`,
+      },
+      {
+        id: "fc_2",
+        question: "Key terminology and application",
+        answer: "Presents fundamental domain formulas, definitions, and real-world applications.",
+      }
+    );
+  }
+
+  return cards;
 }

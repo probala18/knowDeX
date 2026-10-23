@@ -3,15 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Layers, Plus, ArrowRight, FileText, BookOpen } from "lucide-react";
+import { getCachedData, setCachedData } from "@/lib/cache";
 
 export default function FlashcardsPage() {
-  const [decks, setDecks] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cached = typeof window !== "undefined" ? getCachedData<any[]>("/api/flashcards") : null;
+  const [decks, setDecks] = useState<any[]>(() => cached || []);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   useEffect(() => {
     fetch("/api/flashcards")
       .then((res) => res.json())
-      .then((data) => setDecks(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : [];
+        setDecks(arr);
+        setCachedData("/api/flashcards", arr);
+      })
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, []);

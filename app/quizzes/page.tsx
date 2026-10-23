@@ -3,15 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Plus, ArrowRight, FileText, CheckCircle2, Award } from "lucide-react";
+import { getCachedData, setCachedData } from "@/lib/cache";
 
 export default function QuizzesPage() {
-  const [quizzes, setQuizzes] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cached = typeof window !== "undefined" ? getCachedData<any[]>("/api/quizzes") : null;
+  const [quizzes, setQuizzes] = useState<any[]>(() => cached || []);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   useEffect(() => {
     fetch("/api/quizzes")
       .then((res) => res.json())
-      .then((data) => setQuizzes(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : [];
+        setQuizzes(arr);
+        setCachedData("/api/quizzes", arr);
+      })
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, []);

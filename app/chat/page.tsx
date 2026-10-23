@@ -14,16 +14,20 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { getCachedData, setCachedData } from "@/lib/cache";
 
 export default function ChatSessionsPage() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedSessions = typeof window !== "undefined" ? getCachedData<any[]>("/api/chat/sessions") : null;
+  const cachedDocs = typeof window !== "undefined" ? getCachedData<any[]>("/api/documents") : null;
+
+  const [sessions, setSessions] = useState<any[]>(() => cachedSessions || []);
+  const [documents, setDocuments] = useState<any[]>(() => cachedDocs || []);
+  const [isLoading, setIsLoading] = useState(!cachedSessions);
 
   // New Chat Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDocId, setSelectedDocId] = useState("");
+  const [selectedDocId, setSelectedDocId] = useState(() => (cachedDocs && cachedDocs.length > 0 ? cachedDocs[0].id : ""));
   const [sessionTitle, setSessionTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
@@ -37,11 +41,13 @@ export default function ChatSessionsPage() {
       if (sessRes.ok) {
         const sData = await sessRes.json();
         setSessions(sData);
+        setCachedData("/api/chat/sessions", sData);
       }
       if (docsRes.ok) {
         const dData = await docsRes.json();
         setDocuments(dData);
-        if (dData.length > 0) setSelectedDocId(dData[0].id);
+        setCachedData("/api/documents", dData);
+        if (dData.length > 0 && !selectedDocId) setSelectedDocId(dData[0].id);
       }
     } catch (err) {
       console.error(err);

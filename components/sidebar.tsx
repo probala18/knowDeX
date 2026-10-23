@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
@@ -23,12 +23,13 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside className="w-64 border-r border-border/60 bg-card/40 backdrop-blur-xl flex flex-col justify-between hidden md:flex shrink-0 min-h-screen">
       <div className="p-4 space-y-6">
         {/* Brand */}
-        <Link href="/dashboard" className="flex items-center gap-3 px-2 py-1 group">
+        <Link href="/dashboard" prefetch={true} className="flex items-center gap-3 px-2 py-1 group">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:scale-105 transition-transform">
             <Cpu className="w-5 h-5 text-white" />
           </div>
@@ -54,6 +55,8 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={true}
+                onMouseEnter={() => router.prefetch(item.href)}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isActive
                     ? "bg-primary/15 text-primary border border-primary/25 shadow-sm"

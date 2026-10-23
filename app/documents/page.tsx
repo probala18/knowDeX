@@ -18,11 +18,13 @@ import {
 import { DocumentUploader } from "@/components/document-uploader";
 import { Button } from "@/components/ui-button";
 import { toast } from "sonner";
+import { getCachedData, setCachedData, invalidateCache } from "@/lib/cache";
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<any[]>([]);
+  const cached = typeof window !== "undefined" ? getCachedData<any[]>("/api/documents") : null;
+  const [documents, setDocuments] = useState<any[]>(() => cached || []);
   const [search, setSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   const fetchDocuments = async () => {
     try {
@@ -30,6 +32,7 @@ export default function DocumentsPage() {
       if (res.ok) {
         const json = await res.json();
         setDocuments(json);
+        setCachedData("/api/documents", json);
       }
     } catch (err) {
       console.error(err);
@@ -49,6 +52,8 @@ export default function DocumentsPage() {
       if (res.ok) {
         toast.success("Document deleted");
         setDocuments((prev) => prev.filter((d) => d.id !== id));
+        invalidateCache("/api/documents");
+        invalidateCache("/api/dashboard");
       } else {
         toast.error("Failed to delete document");
       }
